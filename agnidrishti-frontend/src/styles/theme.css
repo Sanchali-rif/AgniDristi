@@ -1,0 +1,72 @@
+@import url('https://fonts.googleapis.com/css2?family=Urbanist:ital,wght@0,300..900;1,300..900&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #d8f5a9;
+  --color-surface: #ffffff;
+  --color-border: #000000;
+  --color-accent: #000000;
+  --color-accent-highlight: #d8f5a9;
+  --color-text-primary: #000000;
+  --color-text-secondary: #27272a;
+  --color-success: #15803d;
+  --color-warning: #b45309;
+  --color-danger: #b91c1c;
+  --color-info: #1d4ed8;
+  --font-sans: 'Urbanist', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, monospace;
+}
+
+:root {
+  --color-bg: #d8f5a9;
+  --color-surface: #ffffff;
+  --color-border: #000000;
+  --color-accent: #000000;
+  --color-accent-highlight: #d8f5a9;
+  --color-text-primary: #000000;
+  --color-text-secondary: #27272a;
+  --color-success: #15803d;
+  --color-warning: #fc5b03;
+  --color-danger: #b91c1c;
+  --color-info: #1d4ed8;
+}
+
+[data-theme='dark'] {
+  --color-bg: #09090b;
+  --color-surface: #141417;
+  --color-border: #3f3f46;
+  --color-accent: #d8f5a9;
+  --color-accent-highlight: #d8f5a9;
+  --color-text-primary: #ffffff;
+  --color-text-secondary: #a1a1aa;
+  --color-success: #22c55e;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-info: #3b82f6;
+}
+
+html, body {
+  background-color: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: 'Urbanist', ui-sans-serif, system-ui, sans-serif;
+}
+
+.main-content-scroll, .source-panel-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-border) transparent;
+}
+.main-content-scroll::-webkit-scrollbar, .source-panel-scroll::-webkit-scrollbar { width: 8px; }
+.main-content-scroll::-webkit-scrollbar-track, .source-panel-scroll::-webkit-scrollbar-track { background: transparent; }
+.main-content-scroll::-webkit-scrollbar-thumb, .source-panel-scroll::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: 0px;
+}
+.main-content-scroll::-webkit-scrollbar-thumb:hover, .source-panel-scroll::-webkit-scrollbar-thumb:hover { background: var(--color-text-secondary); }
+
+::selection {
+  background-color: var(--color-accent);
+  color: #d8f5a9;
+}
+
+
+

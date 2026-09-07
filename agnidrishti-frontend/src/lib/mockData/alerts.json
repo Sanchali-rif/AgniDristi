@@ -1,0 +1,7 @@
+[
+  {"id":"ALT-2026-0311","sourceId":"AGNI-ABN-000918","type":"high_anomaly","severity":"high","timestamp":"2026-03-11T08:42:00Z"},
+  {"id":"ALT-2026-0310","sourceId":"AGNI-NEW-005612","type":"new_industrial","severity":"medium","timestamp":"2026-03-10T16:20:00Z"},
+  {"id":"ALT-2026-0309","sourceId":"AGNI-PER-001110","type":"unusual_pattern","severity":"high","timestamp":"2026-03-09T11:05:00Z"},
+  {"id":"ALT-2026-0308","sourceId":"AGNI-IND-004824","type":"new_persistent","severity":"medium","timestamp":"2026-03-08T19:31:00Z"},
+  {"id":"ALT-2026-0307","sourceId":"AGNI-UNK-000404","type":"low_confidence","severity":"low","timestamp":"2026-03-07T05:18:00Z"}
+]

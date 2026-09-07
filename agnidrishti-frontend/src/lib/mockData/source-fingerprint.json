@@ -1,0 +1,13 @@
+{
+  "bins":[
+    {"tempK":300,"normalizedFreq":0.04},
+    {"tempK":310,"normalizedFreq":0.08},
+    {"tempK":320,"normalizedFreq":0.14},
+    {"tempK":330,"normalizedFreq":0.22},
+    {"tempK":340,"normalizedFreq":0.28},
+    {"tempK":350,"normalizedFreq":0.16},
+    {"tempK":360,"normalizedFreq":0.08}
+  ],
+  "bestMatchIndustry":"Steel Plant",
+  "similarityScore":91
+}

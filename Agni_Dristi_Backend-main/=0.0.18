@@ -1,0 +1,5 @@
+Collecting python-multipart
+  Using cached python_multipart-0.0.32-py3-none-any.whl.metadata (2.1 kB)
+Using cached python_multipart-0.0.32-py3-none-any.whl (30 kB)
+Installing collected packages: python-multipart
+Successfully installed python-multipart-0.0.32

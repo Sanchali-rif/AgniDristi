@@ -1,0 +1,14 @@
+[
+  {"date":"2025-04-15","baseline":10,"current":12},
+  {"date":"2025-05-15","baseline":11,"current":14},
+  {"date":"2025-06-15","baseline":12,"current":13},
+  {"date":"2025-07-15","baseline":10,"current":11},
+  {"date":"2025-08-15","baseline":12,"current":15},
+  {"date":"2025-09-15","baseline":13,"current":17},
+  {"date":"2025-10-15","baseline":14,"current":19},
+  {"date":"2025-11-15","baseline":15,"current":18},
+  {"date":"2025-12-15","baseline":15,"current":21},
+  {"date":"2026-01-15","baseline":16,"current":23},
+  {"date":"2026-02-15","baseline":17,"current":26},
+  {"date":"2026-03-15","baseline":18,"current":29}
+]

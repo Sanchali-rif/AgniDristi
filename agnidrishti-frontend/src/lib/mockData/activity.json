@@ -1,0 +1,14 @@
+[
+  {"month":"2025-04","detections":18,"avgTempK":319.4},
+  {"month":"2025-05","detections":22,"avgTempK":321.1},
+  {"month":"2025-06","detections":20,"avgTempK":318.7},
+  {"month":"2025-07","detections":15,"avgTempK":316.9},
+  {"month":"2025-08","detections":17,"avgTempK":317.8},
+  {"month":"2025-09","detections":24,"avgTempK":322.3},
+  {"month":"2025-10","detections":29,"avgTempK":326.5},
+  {"month":"2025-11","detections":27,"avgTempK":324.8},
+  {"month":"2025-12","detections":31,"avgTempK":328.2},
+  {"month":"2026-01","detections":34,"avgTempK":330.1},
+  {"month":"2026-02","detections":38,"avgTempK":333.7},
+  {"month":"2026-03","detections":42,"avgTempK":336.4}
+]
