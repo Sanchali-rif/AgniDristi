@@ -40,6 +40,20 @@ def get_dashboard_summary(
         or 0
     )
 
+    source_hint_rows = (
+        db.query(
+            ThermalObject.temporal_source_hint,
+            func.count(ThermalObject.id)
+        )
+        .group_by(ThermalObject.temporal_source_hint)
+        .all()
+    )
+
+    temporal_source_hints = {
+        hint or "unlabeled": int(count)
+        for hint, count in source_hint_rows
+    }
+
     total_firms = (
         db.query(
             func.count(
@@ -140,6 +154,9 @@ def get_dashboard_summary(
         "thermal_objects":
             int(total_objects),
 
+        "temporal_source_hints":
+            temporal_source_hints,
+
         "firms_detections":
             int(total_firms),
 
@@ -224,6 +241,10 @@ def get_thermal_objects(
         None
     ),
 
+    source_hint: str | None = Query(
+        None
+    ),
+
     db: Session = Depends(get_db)
 ):
     query = db.query(
@@ -234,6 +255,12 @@ def get_thermal_objects(
         query = query.filter(
             ThermalObject.classification_label
             == classification
+        )
+
+    if source_hint:
+        query = query.filter(
+            ThermalObject.temporal_source_hint
+            == source_hint
         )
 
     total = (
@@ -293,6 +320,18 @@ def get_thermal_objects(
                 "persistence_ratio":
                     obj.persistence_ratio,
 
+                "source_persistence_ratio":
+                    obj.source_persistence_ratio,
+
+                "temporal_source_hint":
+                    obj.temporal_source_hint,
+
+                "tci":
+                    obj.tci,
+
+                "seasonal_concentration":
+                    obj.seasonal_concentration,
+
                 "temp_mean":
                     obj.temp_mean,
 
@@ -304,7 +343,19 @@ def get_thermal_objects(
                         obj,
                         "object_radius_m",
                         None
-                    )
+                    ),
+
+                "gas_flare_candidate":
+                    obj.gas_flare_candidate,
+
+                "gas_flare_likelihood":
+                    obj.gas_flare_likelihood,
+
+                "gas_flare_score":
+                    obj.gas_flare_score,
+
+                "gas_flare_source":
+                    obj.gas_flare_source
             }
 
             for obj in objects
@@ -391,11 +442,23 @@ def get_thermal_object_details(
             "persistence_ratio":
                 obj.persistence_ratio,
 
+            "source_persistence_ratio":
+                obj.source_persistence_ratio,
+
             "longest_active_run":
                 obj.longest_active_run,
 
             "max_inactive_gap":
-                obj.max_inactive_gap
+                obj.max_inactive_gap,
+
+            "source_hint":
+                obj.temporal_source_hint,
+
+            "tci":
+                obj.tci,
+
+            "seasonal_concentration":
+                obj.seasonal_concentration
         },
 
         "temperature": {
@@ -445,6 +508,23 @@ def get_thermal_object_details(
 
         "thermal_fingerprint":
             obj.thermal_fingerprint,
+
+        "gas_flare_assessment": {
+            "candidate":
+                obj.gas_flare_candidate,
+
+            "likelihood":
+                obj.gas_flare_likelihood,
+
+            "score":
+                obj.gas_flare_score,
+
+            "source":
+                obj.gas_flare_source,
+
+            "evidence":
+                obj.gas_flare_evidence
+        },
 
         "object_radius_m":
             getattr(

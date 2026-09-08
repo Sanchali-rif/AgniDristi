@@ -4,6 +4,19 @@ import pandas as pd
 from sklearn.base import BaseEstimator, TransformerMixin
 
 
+def _aggregate_temporal_source_hint(values):
+    hints = {
+        str(value)
+        for value in values.dropna()
+        if str(value) != "not_assessed"
+    }
+
+    if len(hints) == 1:
+        return hints.pop()
+
+    return "ambiguous"
+
+
 class ObjectFeatureBuilder(BaseEstimator, TransformerMixin):
     def __init__(
         self,
@@ -234,6 +247,11 @@ class ObjectFeatureBuilder(BaseEstimator, TransformerMixin):
                     "first"
                 ),
 
+                source_persistence_ratio=(
+                    "source_persistence_ratio",
+                    "first"
+                ),
+
                 longest_active_run=(
                     "longest_active_run",
                     "first"
@@ -242,6 +260,21 @@ class ObjectFeatureBuilder(BaseEstimator, TransformerMixin):
                 max_inactive_gap=(
                     "max_inactive_gap",
                     "first"
+                ),
+
+                temporal_source_hint=(
+                    "temporal_source_hint",
+                    _aggregate_temporal_source_hint
+                ),
+
+                tci=(
+                    "tci",
+                    "mean"
+                ),
+
+                seasonal_concentration=(
+                    "seasonal_concentration",
+                    "mean"
                 ),
 
                 mk_trend=(

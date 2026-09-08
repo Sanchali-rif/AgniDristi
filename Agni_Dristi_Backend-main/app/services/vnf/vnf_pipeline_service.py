@@ -24,8 +24,14 @@ from app.pipeline.vnf.features import (
 from app.services.classification.classifier_service import (
     SavedIndustrialClassifier
 )
+from app.services.classification.gem_classifier_service import (
+    classify_industrial_objects
+)
+from app.services.classification.flare_detection_service import (
+    assess_gas_flare_candidates
+)
 
-from app.core.config import MODEL_PATH
+from app.core.config import MODEL_PATH, settings
 
 
 # ============================================================
@@ -41,7 +47,7 @@ classifier = SavedIndustrialClassifier(
 # EXISTING FULL PIPELINE
 # ============================================================
 
-def process_vnf_data(df: pd.DataFrame):
+def process_vnf_data(df: pd.DataFrame, db=None):
     """
     Existing behaviour.
 
@@ -53,7 +59,8 @@ def process_vnf_data(df: pd.DataFrame):
     """
 
     result = process_vnf_data_with_members(
-        df
+        df,
+        db=db
     )
 
     return result["objects"]
@@ -64,7 +71,9 @@ def process_vnf_data(df: pd.DataFrame):
 # ============================================================
 
 def process_vnf_data_with_members(
-    df: pd.DataFrame
+    df: pd.DataFrame,
+    object_source_hints: tuple[str, ...] | None = None,
+    db=None
 ):
     """
     Runs the VNF pipeline while preserving Stage-3
@@ -74,17 +83,26 @@ def process_vnf_data_with_members(
 
         {
             "objects": object-level classified dataframe,
-            "detections": Stage-3 persistent detections,
+            "detections": selected Stage-3 persistent detections,
             "temporal_detections": detections after temporal
-                                   persistence classification
+                                   persistence classification,
+            "industrial_detections": persistent industrial detections,
+            "ambiguous_detections": persistent detections without a strong hint
         }
+
+    By default, all persistent detections continue to object construction.
+    Pass object_source_hints to selectively continue only named hints while
+    retaining every annotated detection in temporal_detections and the
+    source-specific outputs.
     """
 
     if df.empty:
         return {
             "objects": pd.DataFrame(),
             "detections": pd.DataFrame(),
-            "temporal_detections": pd.DataFrame()
+            "temporal_detections": pd.DataFrame(),
+            "industrial_detections": pd.DataFrame(),
+            "ambiguous_detections": pd.DataFrame()
         }
 
     # ========================================================
@@ -115,7 +133,9 @@ def process_vnf_data_with_members(
         return {
             "objects": pd.DataFrame(),
             "detections": pd.DataFrame(),
-            "temporal_detections": pd.DataFrame()
+            "temporal_detections": pd.DataFrame(),
+            "industrial_detections": pd.DataFrame(),
+            "ambiguous_detections": pd.DataFrame()
         }
 
     # ========================================================
@@ -140,7 +160,9 @@ def process_vnf_data_with_members(
         return {
             "objects": pd.DataFrame(),
             "detections": pd.DataFrame(),
-            "temporal_detections": pd.DataFrame()
+            "temporal_detections": pd.DataFrame(),
+            "industrial_detections": pd.DataFrame(),
+            "ambiguous_detections": pd.DataFrame()
         }
 
     # ========================================================
@@ -168,7 +190,11 @@ def process_vnf_data_with_members(
         recurring_min_active_months=6,
         recurring_max_gap=3,
         continuous_min_run=3,
-        continuous_min_detections=10,
+        continuous_min_active_dates=10,
+        min_persistence_ratio=0.50,
+        min_source_persistence_ratio=0.50,
+        industrial_tci_threshold=0.40,
+        industrial_max_seasonal_concentration=0.75,
         random_state=42
     )
 
@@ -180,8 +206,28 @@ def process_vnf_data_with_members(
         return {
             "objects": pd.DataFrame(),
             "detections": pd.DataFrame(),
-            "temporal_detections": temporal_df
+            "temporal_detections": temporal_df,
+            "industrial_detections": pd.DataFrame(),
+            "ambiguous_detections": pd.DataFrame()
         }
+
+    persistent_temporal_df = temporal_df[
+        temporal_df["temporal_class"] == "persistent"
+    ].copy()
+
+    industrial_df = persistent_temporal_df[
+        persistent_temporal_df["temporal_source_hint"] == "industrial"
+    ].copy()
+
+    ambiguous_df = persistent_temporal_df[
+        persistent_temporal_df["temporal_source_hint"] == "ambiguous"
+    ].copy()
+
+    recluster_input = temporal_df
+    if object_source_hints is not None:
+        recluster_input = temporal_df[
+            temporal_df["temporal_source_hint"].isin(object_source_hints)
+        ].copy()
 
     # ========================================================
     # 5. STAGE 3 — PERSISTENT RECLUSTERING
@@ -194,14 +240,16 @@ def process_vnf_data_with_members(
     )
 
     persistent_df = recluster.fit_transform(
-        temporal_df
+        recluster_input
     )
 
     if persistent_df.empty:
         return {
             "objects": pd.DataFrame(),
             "detections": persistent_df,
-            "temporal_detections": temporal_df
+            "temporal_detections": temporal_df,
+            "industrial_detections": industrial_df,
+            "ambiguous_detections": ambiguous_df
         }
 
     # ========================================================
@@ -231,7 +279,9 @@ def process_vnf_data_with_members(
         return {
             "objects": pd.DataFrame(),
             "detections": persistent_df,
-            "temporal_detections": temporal_df
+            "temporal_detections": temporal_df,
+            "industrial_detections": industrial_df,
+            "ambiguous_detections": ambiguous_df
         }
 
     # ========================================================
@@ -239,10 +289,18 @@ def process_vnf_data_with_members(
     # ========================================================
 
     classified_objects = (
-        classifier.predict(
-            object_features
+        classify_industrial_objects(
+            db,
+            object_features,
+            classifier,
+            settings.GEM_PRIMARY_RADIUS_METERS,
+            settings.GEM_FALLBACK_RADIUS_METERS,
+            settings.GEM_MAX_RADIUS_METERS,
+            settings.GEM_EXTENDED_RADIUS_METERS
         )
     )
+
+    classified_objects = assess_gas_flare_candidates(classified_objects)
 
     return {
         "objects": classified_objects,
@@ -252,5 +310,9 @@ def process_vnf_data_with_members(
         "detections": persistent_df,
 
         # Includes both persistent + transient temporal results.
-        "temporal_detections": temporal_df
+        "temporal_detections": temporal_df,
+
+        # Source-hint partitions remain available for selective processing.
+        "industrial_detections": industrial_df,
+        "ambiguous_detections": ambiguous_df
     }

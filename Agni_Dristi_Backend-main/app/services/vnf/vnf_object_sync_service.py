@@ -248,6 +248,7 @@ def sync_vnf_objects(
     invalid_count = 0
 
     new_objects = []
+    existing_temporal_updates = []
 
     # Stage3 ID -> permanent THERM UID
     object_uid_map = {}
@@ -281,13 +282,68 @@ def sync_vnf_objects(
         if idx in matches:
             existing_count += 1
 
+            has_flare_assessment = (
+                "gas_flare_likelihood" in row.index
+                and pd.notna(row.get("gas_flare_likelihood"))
+            )
+
             object_uid_map[
                 stage3_id
             ] = matches[idx][
                 "object_uid"
             ]
 
-            # Existing object remains unchanged
+            if row.get("temporal_source_hint") is not None:
+                existing_temporal_updates.append({
+                    "object_uid": matches[idx]["object_uid"],
+                    "detection_count": _safe_int(row.get("detection_count")),
+                    "active_months": _safe_int(row.get("active_months")),
+                    "persistence_ratio": _safe_float(
+                        row.get("persistence_ratio")
+                    ),
+                    "source_persistence_ratio": _safe_float(
+                        row.get("source_persistence_ratio")
+                    ),
+                    "longest_active_run": _safe_int(
+                        row.get("longest_active_run")
+                    ),
+                    "max_inactive_gap": _safe_int(
+                        row.get("max_inactive_gap")
+                    ),
+                    "temporal_source_hint": row.get("temporal_source_hint"),
+                    "tci": _safe_float(row.get("tci")),
+                    "seasonal_concentration": _safe_float(
+                        row.get("seasonal_concentration")
+                    ),
+                    "gas_flare_candidate": (
+                        bool(row.get("gas_flare_candidate"))
+                        if has_flare_assessment
+                        else None
+                    ),
+                    "gas_flare_likelihood": (
+                        row.get("gas_flare_likelihood")
+                        if has_flare_assessment
+                        else None
+                    ),
+                    "gas_flare_score": (
+                        _safe_float(row.get("gas_flare_score"))
+                        if has_flare_assessment
+                        else None
+                    ),
+                    "gas_flare_source": (
+                        row.get("gas_flare_source")
+                        if has_flare_assessment
+                        else None
+                    ),
+                    "gas_flare_evidence": (
+                        json.dumps(row.get("gas_flare_evidence") or {})
+                        if has_flare_assessment
+                        else None
+                    )
+                })
+
+            # Existing classification remains unchanged; temporal evidence is
+            # refreshed from the latest analysis window.
             continue
 
         # ====================================================
@@ -334,7 +390,10 @@ def sync_vnf_objects(
                 ),
 
             classification_source=
-                "VNF_XGBOOST",
+                row.get(
+                    "classification_source",
+                    "VNF_XGBOOST"
+                ),
 
             predicted_label_confidence=
                 _safe_float(
@@ -375,6 +434,32 @@ def sync_vnf_objects(
                 _safe_int(
                     row.get(
                         "max_inactive_gap"
+                    )
+                ),
+
+            source_persistence_ratio=
+                _safe_float(
+                    row.get(
+                        "source_persistence_ratio"
+                    )
+                ),
+
+            temporal_source_hint=
+                row.get(
+                    "temporal_source_hint"
+                ),
+
+            tci=
+                _safe_float(
+                    row.get(
+                        "tci"
+                    )
+                ),
+
+            seasonal_concentration=
+                _safe_float(
+                    row.get(
+                        "seasonal_concentration"
                     )
                 ),
 
@@ -475,7 +560,22 @@ def sync_vnf_objects(
                 ),
 
             match_distance_km=
-                None
+                None,
+
+            gas_flare_candidate=
+                bool(row.get("gas_flare_candidate", False)),
+
+            gas_flare_likelihood=
+                row.get("gas_flare_likelihood"),
+
+            gas_flare_score=
+                _safe_float(row.get("gas_flare_score")),
+
+            gas_flare_source=
+                row.get("gas_flare_source"),
+
+            gas_flare_evidence=
+                row.get("gas_flare_evidence")
         )
 
         new_objects.append(
@@ -487,6 +587,45 @@ def sync_vnf_objects(
     # --------------------------------------------------------
 
     try:
+
+        if existing_temporal_updates:
+            db.execute(
+                text("""
+                    UPDATE thermal_objects
+                    SET
+                        detection_count = :detection_count,
+                        active_months = :active_months,
+                        persistence_ratio = :persistence_ratio,
+                        source_persistence_ratio = :source_persistence_ratio,
+                        longest_active_run = :longest_active_run,
+                        max_inactive_gap = :max_inactive_gap,
+                        temporal_source_hint = :temporal_source_hint,
+                        tci = :tci,
+                        seasonal_concentration = :seasonal_concentration,
+                        gas_flare_candidate = COALESCE(
+                            :gas_flare_candidate,
+                            gas_flare_candidate
+                        ),
+                        gas_flare_likelihood = COALESCE(
+                            :gas_flare_likelihood,
+                            gas_flare_likelihood
+                        ),
+                        gas_flare_score = COALESCE(
+                            :gas_flare_score,
+                            gas_flare_score
+                        ),
+                        gas_flare_source = COALESCE(
+                            :gas_flare_source,
+                            gas_flare_source
+                        ),
+                        gas_flare_evidence = COALESCE(
+                            CAST(:gas_flare_evidence AS jsonb),
+                            gas_flare_evidence
+                        )
+                    WHERE object_uid = :object_uid
+                """),
+                existing_temporal_updates
+            )
 
         if new_objects:
             db.add_all(

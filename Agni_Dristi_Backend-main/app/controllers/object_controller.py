@@ -15,6 +15,7 @@ router = APIRouter(
 @router.get("/",response_model=list[ThermalObjectResponse])
 def get_objects(
     class_name: str | None = None,
+    source_hint: str | None = None,
     min_confidence: float | None = Query(default=None, ge=0, le=1),
     limit: int = Query(default=100, ge=1, le=1000),
     db: Session = Depends(get_db)
@@ -24,6 +25,11 @@ def get_objects(
     if class_name:
         query = query.filter(
             ThermalObject.classification_label == class_name
+        )
+
+    if source_hint:
+        query = query.filter(
+            ThermalObject.temporal_source_hint == source_hint
         )
 
     if min_confidence is not None:

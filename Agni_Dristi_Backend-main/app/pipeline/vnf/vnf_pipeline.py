@@ -46,7 +46,11 @@ def build_vnf_pipeline():
                 recurring_min_active_months=6,
                 recurring_max_gap=3,
                 continuous_min_run=3,
-                continuous_min_detections=10,
+                continuous_min_active_dates=10,
+                min_persistence_ratio=0.50,
+                min_source_persistence_ratio=0.50,
+                industrial_tci_threshold=0.40,
+                industrial_max_seasonal_concentration=0.75,
                 random_state=42
             )
         ),

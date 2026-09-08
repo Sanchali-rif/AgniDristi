@@ -80,6 +80,100 @@ def _build_thermal_fingerprint(
     }
 
 
+def _calculate_profile_updates(
+    detections: pd.DataFrame
+):
+    """Calculate object profiles from detections already loaded in bulk."""
+
+    if detections.empty:
+        return {}
+
+    df = detections.copy()
+
+    for column in (
+        "temp_primary",
+        "area_primary",
+        "rh_primary"
+    ):
+        df[column] = pd.to_numeric(
+            df[column],
+            errors="coerce"
+        )
+
+    df["active_month"] = pd.to_datetime(
+        df["mscan_date"],
+        errors="coerce"
+    ).dt.to_period("M")
+
+    updates = {}
+
+    for object_uid, group in df.groupby(
+        "object_uid",
+        sort=False
+    ):
+        temp = group["temp_primary"]
+        area = group["area_primary"]
+        rh = group["rh_primary"]
+
+        temp_mean = _safe_float(temp.mean())
+        temp_std = _safe_float(temp.std())
+        area_mean = _safe_float(area.mean())
+        area_std = _safe_float(area.std())
+        rh_mean = _safe_float(rh.mean())
+        rh_std = _safe_float(rh.std())
+
+        updates[object_uid] = {
+            "temp_mean": temp_mean,
+            "temp_median": _safe_float(temp.median()),
+            "temp_min": _safe_float(temp.min()),
+            "temp_max": _safe_float(temp.max()),
+            "temp_std": temp_std,
+            "temp_range": _safe_float(
+                temp.max() - temp.min()
+            ),
+            "temp_cv": (
+                temp_std / abs(temp_mean)
+                if (
+                    temp_mean is not None
+                    and temp_std is not None
+                    and abs(temp_mean) > 1e-8
+                )
+                else None
+            ),
+            "area_mean": area_mean,
+            "area_std": area_std,
+            "area_cv": (
+                area_std / abs(area_mean)
+                if (
+                    area_mean is not None
+                    and area_std is not None
+                    and abs(area_mean) > 1e-8
+                )
+                else None
+            ),
+            "rh_mean": rh_mean,
+            "rh_std": rh_std,
+            "rh_cv": (
+                rh_std / abs(rh_mean)
+                if (
+                    rh_mean is not None
+                    and rh_std is not None
+                    and abs(rh_mean) > 1e-8
+                )
+                else None
+            ),
+            "detection_count": int(len(group)),
+            "active_months": int(
+                group["active_month"].nunique()
+            ),
+            "thermal_fingerprint": (
+                _build_thermal_fingerprint(temp)
+            )
+        }
+
+    return updates
+
+
 def recalculate_object_profiles_for_batch(
     db: Session,
     batch_id: str
@@ -95,10 +189,6 @@ def recalculate_object_profiles_for_batch(
             "updated_objects": 0
         }
 
-    # ========================================================
-    # 1. FIND OBJECTS TOUCHED BY THIS BATCH
-    # ========================================================
-
     affected_uids = [
         row[0]
         for row in (
@@ -108,10 +198,8 @@ def recalculate_object_profiles_for_batch(
             .filter(
                 VNFDetection.ingestion_batch_id
                 == batch_id,
-
                 VNFDetection.processing_state
                 == "KNOWN_OBJECT",
-
                 VNFDetection.matched_object_uid
                 .isnot(None)
             )
@@ -137,210 +225,69 @@ def recalculate_object_profiles_for_batch(
         len(affected_uids)
     )
 
-    updated_count = 0
-
     try:
-        # ====================================================
-        # 2. UPDATE ONE AFFECTED OBJECT AT A TIME
-        # ====================================================
-
-        for object_uid in affected_uids:
-
-            detections = (
-                db.query(
-                    VNFDetection
-                )
-                .filter(
-                    VNFDetection.matched_object_uid
-                    == object_uid,
-
-                    VNFDetection.processing_state
-                    == "KNOWN_OBJECT"
-                )
-                .all()
+        detection_rows = (
+            db.query(
+                VNFDetection.matched_object_uid,
+                VNFDetection.temp_primary,
+                VNFDetection.rh_primary,
+                VNFDetection.area_primary,
+                VNFDetection.mscan_date
             )
-
-            if not detections:
-                continue
-
-            df = pd.DataFrame([
-                {
-                    "temp_primary":
-                        d.temp_primary,
-
-                    "rh_primary":
-                        d.rh_primary,
-
-                    "area_primary":
-                        d.area_primary,
-
-                    "mscan_date":
-                        d.mscan_date
-                }
-                for d in detections
-            ])
-
-            obj = (
-                db.query(
-                    ThermalObject
-                )
-                .filter(
-                    ThermalObject.object_uid
-                    == object_uid
-                )
-                .first()
+            .filter(
+                VNFDetection.matched_object_uid
+                .in_(affected_uids),
+                VNFDetection.processing_state
+                == "KNOWN_OBJECT"
             )
+            .all()
+        )
 
-            if obj is None:
-                continue
+        detections = pd.DataFrame(
+            detection_rows,
+            columns=[
+                "object_uid",
+                "temp_primary",
+                "rh_primary",
+                "area_primary",
+                "mscan_date"
+            ]
+        )
 
-            # ================================================
-            # TEMPERATURE
-            # ================================================
+        profile_updates = _calculate_profile_updates(
+            detections
+        )
 
-            temp = pd.to_numeric(
-                df["temp_primary"],
-                errors="coerce"
+        object_rows = (
+            db.query(
+                ThermalObject.id,
+                ThermalObject.object_uid
             )
-
-            obj.temp_mean = _safe_float(
-                temp.mean()
+            .filter(
+                ThermalObject.object_uid
+                .in_(list(profile_updates))
             )
+            .all()
+            if profile_updates
+            else []
+        )
 
-            obj.temp_median = _safe_float(
-                temp.median()
+        update_mappings = [
+            {
+                "id": object_id,
+                **profile_updates[object_uid]
+            }
+            for object_id, object_uid in object_rows
+        ]
+
+        if update_mappings:
+            db.bulk_update_mappings(
+                ThermalObject,
+                update_mappings
             )
-
-            obj.temp_min = _safe_float(
-                temp.min()
-            )
-
-            obj.temp_max = _safe_float(
-                temp.max()
-            )
-
-            obj.temp_std = _safe_float(
-                temp.std()
-            )
-
-            obj.temp_range = (
-                _safe_float(
-                    temp.max()
-                    - temp.min()
-                )
-            )
-
-            if (
-                obj.temp_mean is not None
-                and obj.temp_std is not None
-                and abs(obj.temp_mean) > 1e-8
-            ):
-                obj.temp_cv = (
-                    obj.temp_std
-                    / abs(obj.temp_mean)
-                )
-            else:
-                obj.temp_cv = None
-
-            # ================================================
-            # AREA
-            # ================================================
-
-            area = pd.to_numeric(
-                df["area_primary"],
-                errors="coerce"
-            )
-
-            obj.area_mean = _safe_float(
-                area.mean()
-            )
-
-            obj.area_std = _safe_float(
-                area.std()
-            )
-
-            if (
-                obj.area_mean is not None
-                and obj.area_std is not None
-                and abs(obj.area_mean) > 1e-8
-            ):
-                obj.area_cv = (
-                    obj.area_std
-                    / abs(obj.area_mean)
-                )
-            else:
-                obj.area_cv = None
-
-            # ================================================
-            # RADIANT HEAT
-            # ================================================
-
-            rh = pd.to_numeric(
-                df["rh_primary"],
-                errors="coerce"
-            )
-
-            obj.rh_mean = _safe_float(
-                rh.mean()
-            )
-
-            obj.rh_std = _safe_float(
-                rh.std()
-            )
-
-            if (
-                obj.rh_mean is not None
-                and obj.rh_std is not None
-                and abs(obj.rh_mean) > 1e-8
-            ):
-                obj.rh_cv = (
-                    obj.rh_std
-                    / abs(obj.rh_mean)
-                )
-            else:
-                obj.rh_cv = None
-
-            # ================================================
-            # DETECTION COUNT
-            # ================================================
-
-            obj.detection_count = int(
-                len(df)
-            )
-
-            # ================================================
-            # ACTIVE MONTHS
-            # ================================================
-
-            dates = pd.to_datetime(
-                df["mscan_date"],
-                errors="coerce"
-            )
-
-            months = (
-                dates
-                .dropna()
-                .dt.to_period("M")
-                .nunique()
-            )
-
-            obj.active_months = int(
-                months
-            )
-
-            # ================================================
-            # THERMAL FINGERPRINT
-            # ================================================
-
-            obj.thermal_fingerprint = (
-                _build_thermal_fingerprint(
-                    temp
-                )
-            )
-
-            updated_count += 1
 
         db.commit()
+        updated_count = len(update_mappings)
 
     except Exception:
         db.rollback()
@@ -359,9 +306,6 @@ def recalculate_object_profiles_for_batch(
     )
 
     return {
-        "affected_objects":
-            len(affected_uids),
-
-        "updated_objects":
-            updated_count
+        "affected_objects": len(affected_uids),
+        "updated_objects": updated_count
     }

@@ -1,5 +1,3 @@
-from datetime import date
-
 from dateutil.relativedelta import (
     relativedelta
 )
@@ -128,7 +126,8 @@ def run_bootstrap_pipeline(
 
     result = (
         process_vnf_data_with_members(
-            working_df
+            working_df,
+            db=db
         )
     )
 
@@ -179,7 +178,8 @@ def run_bootstrap_pipeline(
         persistent_df,
         sync_result[
             "object_uid_map"
-        ]
+        ],
+        classified_objects=objects
     )
 
     return {
@@ -221,11 +221,23 @@ def load_affected_history(
     months: int = 12,
     radius_m: int = LOCAL_HISTORY_RADIUS_M
 ):
+    analysis_end = db.execute(
+        text("""
+            SELECT MAX(mscan_date)
+            FROM vnf_detections
+            WHERE ingestion_batch_id = :batch_id
+              AND processing_state = 'CANDIDATE'
+        """),
+        {"batch_id": batch_id}
+    ).scalar()
+
+    if analysis_end is None:
+        logger.info("Affected VNF working pool: 0")
+        return pd.DataFrame()
+
     start_date = (
-        date.today()
-        - relativedelta(
-            months=months
-        )
+        analysis_end
+        - relativedelta(months=months)
     )
 
     rows = (
@@ -256,6 +268,8 @@ def load_affected_history(
                         ON old.processing_state = 'TRANSIENT'
 
                         AND old.mscan_date >= :start_date
+
+                        AND old.mscan_date <= :analysis_end
 
                         AND old.location IS NOT NULL
 
@@ -312,6 +326,7 @@ def load_affected_history(
             {
                 "batch_id": batch_id,
                 "start_date": start_date,
+                "analysis_end": analysis_end,
                 "radius": radius_m
             }
         )
@@ -382,7 +397,8 @@ def run_affected_candidate_pipeline(
 
     result = (
         process_vnf_data_with_members(
-            working_df
+            working_df,
+            db=db
         )
     )
 
@@ -440,7 +456,8 @@ def run_affected_candidate_pipeline(
         persistent_df,
         sync_result[
             "object_uid_map"
-        ]
+        ],
+        classified_objects=objects
     )
 
     return {

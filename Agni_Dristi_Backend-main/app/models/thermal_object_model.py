@@ -1,5 +1,6 @@
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     Float,
     Integer,
     String
@@ -86,12 +87,29 @@ class ThermalObject(Base):
         Float
     )
 
+    source_persistence_ratio: Mapped[float | None] = mapped_column(
+        Float
+    )
+
     longest_active_run: Mapped[int | None] = mapped_column(
         Integer
     )
 
     max_inactive_gap: Mapped[int | None] = mapped_column(
         Integer
+    )
+
+    temporal_source_hint: Mapped[str | None] = mapped_column(
+        String(30),
+        index=True
+    )
+
+    tci: Mapped[float | None] = mapped_column(
+        Float
+    )
+
+    seasonal_concentration: Mapped[float | None] = mapped_column(
+        Float
     )
 
     # -------------------------
@@ -138,3 +156,13 @@ class ThermalObject(Base):
     match_distance_km: Mapped[float | None] = mapped_column(
         Float
     )
+
+    # -------------------------
+    # GAS FLARE ASSESSMENT
+    # -------------------------
+
+    gas_flare_candidate: Mapped[bool | None] = mapped_column(Boolean)
+    gas_flare_likelihood: Mapped[str | None] = mapped_column(String(20))
+    gas_flare_score: Mapped[float | None] = mapped_column(Float)
+    gas_flare_source: Mapped[str | None] = mapped_column(String(50))
+    gas_flare_evidence: Mapped[dict | None] = mapped_column(JSONB)

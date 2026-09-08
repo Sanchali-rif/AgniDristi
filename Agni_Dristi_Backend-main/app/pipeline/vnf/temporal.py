@@ -63,6 +63,133 @@ def _longest_active_run(v):
     return best
 
 
+def _episode_metrics(datetimes, max_gap_days=14):
+    """Return the number and maximum duration of detection episodes."""
+    dates = (
+        pd.Series(datetimes)
+        .dropna()
+        .dt.normalize()
+        .drop_duplicates()
+        .sort_values()
+        .tolist()
+    )
+
+    if not dates:
+        return 0, 0
+
+    episode_count = 1
+    episode_start = dates[0]
+    previous = dates[0]
+    max_duration_days = 1
+
+    for current in dates[1:]:
+        if (current - previous).days > max_gap_days:
+            max_duration_days = max(
+                max_duration_days,
+                (previous - episode_start).days + 1
+            )
+            episode_count += 1
+            episode_start = current
+
+        previous = current
+
+    max_duration_days = max(
+        max_duration_days,
+        (previous - episode_start).days + 1
+    )
+
+    return episode_count, max_duration_days
+
+
+def _temporal_behaviour_metrics(datetimes, analysis_start, analysis_end):
+    """Calculate observation-window-normalized weekly behaviour metrics."""
+    series = pd.Series(datetimes).dropna()
+
+    if series.empty:
+        return {
+            "active_weeks": 0,
+            "total_weeks": 0,
+            "weekly_active_ratio": 0.0,
+            "weekly_transition_rate": 0.0,
+            "observation_span_ratio": 0.0,
+            "weekly_continuity_ratio": 0.0,
+            "seasonal_concentration": 0.0,
+            "episode_count": 0,
+            "max_episode_duration_days": 0,
+            "unique_active_dates": 0,
+            "tci": 0.0
+        }
+
+    start_week = pd.Timestamp(analysis_start).to_period("W-SUN")
+    end_week = pd.Timestamp(analysis_end).to_period("W-SUN")
+    weeks = pd.period_range(start_week, end_week, freq="W-SUN")
+
+    weekly_counts = (
+        series.dt.to_period("W-SUN")
+        .value_counts()
+        .reindex(weeks, fill_value=0)
+        .sort_index()
+    )
+    active = weekly_counts.to_numpy() > 0
+    active_weeks = int(active.sum())
+    total_weeks = len(active)
+
+    active_positions = np.flatnonzero(active)
+    span_weeks = (
+        int(active_positions[-1] - active_positions[0] + 1)
+        if active_weeks
+        else 0
+    )
+    transitions = (
+        int(np.count_nonzero(active[1:] != active[:-1]))
+        if total_weeks > 1
+        else 0
+    )
+
+    weekly_active_ratio = active_weeks / total_weeks if total_weeks else 0.0
+    weekly_transition_rate = transitions / (total_weeks - 1) if total_weeks > 1 else 0.0
+    observation_span_ratio = span_weeks / total_weeks if total_weeks else 0.0
+    weekly_continuity_ratio = (
+        _longest_active_run(active.astype(int)) / active_weeks
+        if active_weeks
+        else 0.0
+    )
+
+    # Biomass burning is commonly concentrated into a short annual season.
+    month_of_year_counts = series.dt.month.value_counts()
+    seasonal_concentration = float(
+        month_of_year_counts.nlargest(3).sum() / len(series)
+    )
+
+    episode_count, max_episode_duration_days = _episode_metrics(series)
+    unique_active_dates = int(series.dt.normalize().nunique())
+
+    # TCI combines duty cycle, lifespan across the analysis window, and
+    # continuity. A short, dense fire episode therefore does not look like a
+    # continuously operating heat source merely because it has many records.
+    tci = float(np.clip(
+        0.40 * weekly_active_ratio
+        + 0.35 * observation_span_ratio
+        + 0.25 * weekly_continuity_ratio,
+        0.0,
+        1.0
+    ))
+
+    return {
+        "active_weeks": active_weeks,
+        "total_weeks": total_weeks,
+        "weekly_active_ratio": float(weekly_active_ratio),
+        "weekly_transition_rate": float(weekly_transition_rate),
+        "observation_span_ratio": float(observation_span_ratio),
+        "weekly_continuity_ratio": float(weekly_continuity_ratio),
+        "seasonal_concentration": seasonal_concentration,
+        "episode_count": episode_count,
+        "max_episode_duration_days": max_episode_duration_days,
+        "unique_active_dates": unique_active_dates,
+        "tci": tci
+    }
+
+
 def _kmedoids_precomputed(D, k, max_iter=100, random_state=42):
     rng = np.random.default_rng(random_state)
     n = D.shape[0]
@@ -125,7 +252,7 @@ def _kmedoids_precomputed(D, k, max_iter=100, random_state=42):
 
 
 class TemporalPersistenceLabeler(BaseEstimator, TransformerMixin):
-    def __init__(self, cluster_col="cluster_id", cell_col="cell_id", date_col="Mscan_date", max_k=6, recurring_min_active_months=6, recurring_max_gap=3, continuous_min_run=3, continuous_min_detections=10, random_state=42):
+    def __init__(self, cluster_col="cluster_id", cell_col="cell_id", date_col="Mscan_date", max_k=6, recurring_min_active_months=6, recurring_max_gap=3, continuous_min_run=3, continuous_min_active_dates=10, min_persistence_ratio=0.50, min_source_persistence_ratio=0.50, industrial_tci_threshold=0.40, industrial_max_seasonal_concentration=0.75, random_state=42):
         self.cluster_col = cluster_col
         self.cell_col = cell_col
         self.date_col = date_col
@@ -133,24 +260,44 @@ class TemporalPersistenceLabeler(BaseEstimator, TransformerMixin):
         self.recurring_min_active_months = recurring_min_active_months
         self.recurring_max_gap = recurring_max_gap
         self.continuous_min_run = continuous_min_run
-        self.continuous_min_detections = continuous_min_detections
+        self.continuous_min_active_dates = continuous_min_active_dates
+        self.min_persistence_ratio = min_persistence_ratio
+        self.min_source_persistence_ratio = min_source_persistence_ratio
+        self.industrial_tci_threshold = industrial_tci_threshold
+        self.industrial_max_seasonal_concentration = (
+            industrial_max_seasonal_concentration
+        )
         self.random_state = random_state
 
     def fit(self, X, y=None):
         return self
 
     @staticmethod
-    def _classify(row, recurring_min_active_months, recurring_max_gap, continuous_min_run, continuous_min_detections):
+    def _classify(row, recurring_min_active_months, recurring_max_gap, continuous_min_run, continuous_min_active_dates, min_persistence_ratio, min_source_persistence_ratio):
         recurring = (
+            row["source_span_months"] >= recurring_min_active_months
+            and
             row["active_months"] >= recurring_min_active_months
             and
-            row["max_inactive_gap"] <= recurring_max_gap
+            row["max_internal_inactive_gap"] <= recurring_max_gap
+            and
+            row["unique_active_dates"] >= recurring_min_active_months
+            and
+            row["source_persistence_ratio"] >= min_source_persistence_ratio
+            and
+            row["persistence_ratio"] >= min_persistence_ratio
         )
 
         continuous = (
             row["longest_active_run"] >= continuous_min_run
             and
-            row["total_detections"] >= continuous_min_detections
+            row["unique_active_dates"] >= continuous_min_active_dates
+            and
+            row["max_internal_inactive_gap"] <= recurring_max_gap
+            and
+            row["source_persistence_ratio"] >= min_source_persistence_ratio
+            and
+            row["persistence_ratio"] >= min_persistence_ratio
         )
 
         return (
@@ -158,6 +305,24 @@ class TemporalPersistenceLabeler(BaseEstimator, TransformerMixin):
             if recurring or continuous
             else "transient"
         )
+
+    @staticmethod
+    def _source_hint(
+        row,
+        industrial_tci_threshold,
+        industrial_max_seasonal_concentration
+    ):
+        """Split persistent activity using continuity and seasonality."""
+        if row["temporal_class"] != "persistent":
+            return "not_assessed"
+
+        ambiguous = (
+            row["tci"] < industrial_tci_threshold
+            and row["seasonal_concentration"]
+            > industrial_max_seasonal_concentration
+        )
+
+        return "ambiguous" if ambiguous else "industrial"
 
     def transform(self, X):
         df = X.copy()
@@ -209,6 +374,19 @@ class TemporalPersistenceLabeler(BaseEstimator, TransformerMixin):
             )
             .sort_index(axis=1)
             .astype(int)
+        )
+
+        # The pivot only creates columns for months found in the input. Fill
+        # the entire calendar range so Jan, Mar, May cannot be interpreted as
+        # three consecutive months when Feb and Apr contain no detections.
+        calendar_months = pd.period_range(
+            df["_month"].min(),
+            df["_month"].max(),
+            freq="M"
+        )
+        cell_time_series = cell_time_series.reindex(
+            columns=calendar_months,
+            fill_value=0
         )
 
         # ---------------------------------------------
@@ -327,6 +505,32 @@ class TemporalPersistenceLabeler(BaseEstimator, TransformerMixin):
             ignore_index=True
         )
 
+        detections_with_groups = df.merge(
+            temporal_clusters,
+            on=[self.cluster_col, self.cell_col],
+            how="left"
+        )
+
+        analysis_start = df["_datetime"].min()
+        analysis_end = df["_datetime"].max()
+
+        behaviour_records = []
+        for (cluster_id, temporal_cluster), group in detections_with_groups.groupby(
+            [self.cluster_col, "temporal_cluster"],
+            observed=True
+        ):
+            behaviour_records.append({
+                self.cluster_col: cluster_id,
+                "temporal_cluster": temporal_cluster,
+                **_temporal_behaviour_metrics(
+                    group["_datetime"],
+                    analysis_start,
+                    analysis_end
+                )
+            })
+
+        behaviour_metrics = pd.DataFrame(behaviour_records)
+
         # ---------------------------------------------
         # 3. AGGREGATE TEMPORAL GROUPS
         # ---------------------------------------------
@@ -387,6 +591,22 @@ class TemporalPersistenceLabeler(BaseEstimator, TransformerMixin):
                 active.sum()
             )
 
+            active_positions = np.flatnonzero(active)
+
+            if active_months:
+                first_active = int(active_positions[0])
+                last_active = int(active_positions[-1])
+                source_span_months = last_active - first_active + 1
+                leading_inactive_months = first_active
+                trailing_inactive_months = len(values) - last_active - 1
+                internal_values = values[first_active:last_active + 1]
+                max_internal_inactive_gap = _longest_zero_gap(internal_values)
+            else:
+                source_span_months = 0
+                leading_inactive_months = len(values)
+                trailing_inactive_months = len(values)
+                max_internal_inactive_gap = 0
+
             trend = "no trend"
             tau = 0.0
             p_value = 1.0
@@ -422,11 +642,28 @@ class TemporalPersistenceLabeler(BaseEstimator, TransformerMixin):
                 "total_months":
                     len(values),
 
+                "source_span_months":
+                    source_span_months,
+
+                "leading_inactive_months":
+                    leading_inactive_months,
+
+                "trailing_inactive_months":
+                    trailing_inactive_months,
+
                 "persistence_ratio":
                     (
                         active_months
                         / len(values)
                         if len(values)
+                        else 0.0
+                    ),
+
+                "source_persistence_ratio":
+                    (
+                        active_months
+                        / source_span_months
+                        if source_span_months
                         else 0.0
                     ),
 
@@ -445,10 +682,13 @@ class TemporalPersistenceLabeler(BaseEstimator, TransformerMixin):
                         values
                     ),
 
+                # Retained for downstream compatibility, now correctly scoped
+                # to gaps between the first and last detections.
                 "max_inactive_gap":
-                    _longest_zero_gap(
-                        values
-                    ),
+                    max_internal_inactive_gap,
+
+                "max_internal_inactive_gap":
+                    max_internal_inactive_gap,
 
                 "mk_trend":
                     trend,
@@ -464,6 +704,12 @@ class TemporalPersistenceLabeler(BaseEstimator, TransformerMixin):
             records
         )
 
+        temporal_metrics = temporal_metrics.merge(
+            behaviour_metrics,
+            on=[self.cluster_col, "temporal_cluster"],
+            how="left"
+        )
+
         temporal_metrics[
             "temporal_class"
         ] = temporal_metrics.apply(
@@ -475,8 +721,21 @@ class TemporalPersistenceLabeler(BaseEstimator, TransformerMixin):
                 self.recurring_max_gap,
             continuous_min_run=
                 self.continuous_min_run,
-            continuous_min_detections=
-                self.continuous_min_detections
+            continuous_min_active_dates=
+                self.continuous_min_active_dates,
+            min_persistence_ratio=
+                self.min_persistence_ratio,
+            min_source_persistence_ratio=
+                self.min_source_persistence_ratio
+        )
+
+        temporal_metrics["temporal_source_hint"] = temporal_metrics.apply(
+            self._source_hint,
+            axis=1,
+            industrial_tci_threshold=self.industrial_tci_threshold,
+            industrial_max_seasonal_concentration=(
+                self.industrial_max_seasonal_concentration
+            )
         )
 
         # ---------------------------------------------
@@ -518,7 +777,9 @@ class TemporalPersistenceLabeler(BaseEstimator, TransformerMixin):
             "[Temporal] "
             f"{len(out):,} detections classified | "
             f"{(out['temporal_class'] == 'persistent').sum():,} persistent | "
-            f"{(out['temporal_class'] == 'transient').sum():,} transient"
+            f"{(out['temporal_class'] == 'transient').sum():,} transient | "
+            f"{(out['temporal_source_hint'] == 'industrial').sum():,} industrial | "
+            f"{(out['temporal_source_hint'] == 'ambiguous').sum():,} ambiguous"
         )
 
         return out.reset_index(

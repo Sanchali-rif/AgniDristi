@@ -18,6 +18,10 @@ class ThermalObjectResponse(BaseModel):
     detection_count: int | None
     active_months: int | None
     persistence_ratio: float | None
+    source_persistence_ratio: float | None
+    temporal_source_hint: str | None
+    tci: float | None
+    seasonal_concentration: float | None
 
     temp_mean: float | None
     temp_median: float | None
@@ -25,3 +29,9 @@ class ThermalObjectResponse(BaseModel):
     temp_max: float | None
 
     thermal_fingerprint: dict | None
+
+    gas_flare_candidate: bool | None
+    gas_flare_likelihood: str | None
+    gas_flare_score: float | None
+    gas_flare_source: str | None
+    gas_flare_evidence: dict | None

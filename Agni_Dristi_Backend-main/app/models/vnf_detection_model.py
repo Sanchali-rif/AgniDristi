@@ -117,3 +117,15 @@ class VNFDetection(Base):
         String(50),
         index=True
     )
+
+    # -------------------------------------------------
+    # GEM CLASSIFICATION METADATA
+    # -------------------------------------------------
+
+    gem_industry_exact_type: Mapped[str | None] = mapped_column(
+        String(100)
+    )
+
+    gem_facility_name: Mapped[str | None] = mapped_column(
+        String(255)
+    )

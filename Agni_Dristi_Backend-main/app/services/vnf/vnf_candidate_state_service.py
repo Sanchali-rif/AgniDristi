@@ -14,9 +14,31 @@ def finalize_vnf_states(
     db: Session,
     batch_id: str,
     persistent_df,
-    object_uid_map: dict
+    object_uid_map: dict,
+    classified_objects=None
 ):
     persistent_updated = 0
+    gem_metadata = {}
+
+    if classified_objects is not None and not classified_objects.empty:
+        required_columns = {
+            "stage3_object_id",
+            "classification_source",
+            "gem_industry_exact_type",
+            "gem_facility_name"
+        }
+
+        if required_columns.issubset(classified_objects.columns):
+            for _, classified in classified_objects.iterrows():
+                if classified.get("classification_source") != "GEM_DATABASE":
+                    continue
+
+                gem_metadata[str(classified["stage3_object_id"])] = {
+                    "gem_industry_exact_type": classified.get(
+                        "gem_industry_exact_type"
+                    ),
+                    "gem_facility_name": classified.get("gem_facility_name")
+                }
 
     try:
         # ====================================================
@@ -77,6 +99,8 @@ def finalize_vnf_states(
                 if not object_uid:
                     continue
 
+                metadata = gem_metadata.get(str(stage3_id), {})
+
                 member_ids = (
                     group[
                         "db_detection_id"
@@ -109,7 +133,13 @@ def finalize_vnf_states(
                                     'KNOWN_OBJECT',
 
                                 matched_object_uid =
-                                    :object_uid
+                                    :object_uid,
+
+                                gem_industry_exact_type =
+                                    :gem_industry_exact_type,
+
+                                gem_facility_name =
+                                    :gem_facility_name
 
                             WHERE
                                 id = ANY(
@@ -122,6 +152,12 @@ def finalize_vnf_states(
                         {
                             "object_uid":
                                 object_uid,
+
+                            "gem_industry_exact_type":
+                                metadata.get("gem_industry_exact_type"),
+
+                            "gem_facility_name":
+                                metadata.get("gem_facility_name"),
 
                             "ids":
                                 chunk

@@ -25,11 +25,20 @@ MODEL_PATH = (
 
 
 class Settings:
-    DATABASE_URL = os.getenv(
-        "DATABASE_URL",
-        f"sqlite:///{BASE_DIR / 'app.db'}"
-    )
+    DATABASE_URL = os.getenv("DATABASE_URL")
     FIRMS_MAP_KEY = os.getenv("FIRMS_MAP_KEY")
+    GEM_PRIMARY_RADIUS_METERS = float(
+        os.getenv("GEM_PRIMARY_RADIUS_METERS", "1000")
+    )
+    GEM_FALLBACK_RADIUS_METERS = float(
+        os.getenv("GEM_FALLBACK_RADIUS_METERS", "3000")
+    )
+    GEM_MAX_RADIUS_METERS = float(
+        os.getenv("GEM_MAX_RADIUS_METERS", "5000")
+    )
+    GEM_EXTENDED_RADIUS_METERS = float(
+        os.getenv("GEM_EXTENDED_RADIUS_METERS", "10000")
+    )
 
 
 settings = Settings()

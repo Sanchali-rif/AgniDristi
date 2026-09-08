@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.core.database import Base, engine
+from app.core.schema_migrations import ensure_temporal_source_columns
 
 from app.models.vnf_detection_model import VNFDetection
 from app.models.thermal_object_model import ThermalObject
@@ -26,15 +27,17 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
+
 @app.on_event("startup")
 def startup():
     Base.metadata.create_all(bind=engine)
+    ensure_temporal_source_columns(engine)
 
 
 app.include_router(object_router)
