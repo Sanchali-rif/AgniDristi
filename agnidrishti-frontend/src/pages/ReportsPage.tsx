@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { Download, FileBarChart, FileText, Map, CheckCircle2 } from 'lucide-react'
 import { useKPISummary } from '../services/kpiService'
-import { useAlerts } from '../services/alertService'
+import { useAllAlerts } from '../services/alertService'
 import { useSources } from '../services/sourceService'
 
 export default function ReportsPage() {
   const [downloadMsg, setDownloadMsg] = useState('')
   const { data: summary } = useKPISummary()
-  const { data: alerts = [] } = useAlerts()
+  const { data: alertsData } = useAllAlerts()
+  const alerts = alertsData?.alerts ?? []
   const { data: sources = [] } = useSources()
 
   const handleExportCSV = (reportName: string, data: unknown) => {
@@ -35,7 +36,7 @@ export default function ReportsPage() {
       title: 'Active Alert Stream & Anomaly Log',
       type: 'Alert Intelligence Log',
       date: new Date().toLocaleDateString('en-IN', { dateStyle: 'medium' }),
-      description: `Active alerts payload containing ${alerts.length} live system alert records.`,
+      description: `Active alerts payload containing ${alertsData?.count ?? 0} live system alert records.`,
       icon: FileBarChart,
       payload: alerts,
     },

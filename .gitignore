@@ -84,3 +84,6 @@ temp/
 *.sqlite
 *.sqlite3
 *.db
+
+# Backend is maintained in Soyam27/Agni_Dristi_Backend
+Agni_Dristi_Backend-main/

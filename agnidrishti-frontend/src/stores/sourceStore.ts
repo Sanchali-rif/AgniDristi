@@ -14,6 +14,7 @@ type SourceState = {
   togglePanelCollapse: () => void
   setDatasetMode: (mode: DatasetMode) => void
   toggleLayerId: (id: string) => void
+  setAllLayers: (ids: string[]) => void
   openPanel: (sourceId: string) => void
   closePanel: () => void
 }
@@ -34,6 +35,7 @@ export const useSourceStore = create<SourceState>((set) => ({
       ? s.activeLayerIds.filter((item) => item !== id)
       : [...s.activeLayerIds, id],
   })),
+  setAllLayers: (activeLayerIds) => set({ activeLayerIds }),
   openPanel: (selectedSourceId) => set({ selectedSourceId, isPanelOpen: true, isPanelCollapsed: false }),
   closePanel: () => set({ isPanelOpen: false }),
 }))

@@ -60,4 +60,3 @@ export function RegionalSourcesChart({ expanded = false, showDetailsLink = true 
     </section>
   )
 }
-

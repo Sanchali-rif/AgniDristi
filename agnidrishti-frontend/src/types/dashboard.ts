@@ -33,6 +33,10 @@ export interface ThermalObject {
   temp_mean: number | null
   temp_max: number | null
   object_radius_m: number | null
+  industry_name?: string | null
+  gem_industry_exact_type?: string | null
+  gem_facility_name?: string | null
+  gem_match_radius_m?: number | null
   gas_flare_candidate?: boolean | null
   gas_flare_likelihood?: GasFlareLikelihood | null
   gas_flare_score?: number | null
@@ -59,6 +63,92 @@ export interface RecentFirmsDetection {
 }
 
 export interface RecentFirmsResponse { count: number; detections: RecentFirmsDetection[] }
+
+export interface MapDateHit {
+  date: string
+  firms_count: number
+  matched_count: number
+  unmatched_count: number
+}
+
+export interface MapDatesResponse {
+  count: number
+  dates: MapDateHit[]
+}
+
+export type MapObjectScope = 'matched' | 'all'
+
+export interface VnfMapDetection {
+  id: number
+  id_key: string | null
+  latitude: number
+  longitude: number
+  raw_latitude: number | null
+  raw_longitude: number | null
+  position_source: 'OBJECT_CENTROID' | 'RAW_DETECTION'
+  matched_object_uid: string | null
+  temp_primary: number | null
+  temp_background: number | null
+  rh_primary: number | null
+  area_primary: number | null
+  sensor: string | null
+  vnf_version: string | null
+  mscan_date: string | null
+  mscan_time: string | null
+  processing_state: string | null
+  vnf_type?: 'persistent' | 'transient' | null
+  gem_industry_exact_type: string | null
+  gem_facility_name: string | null
+}
+
+export type VnfPersistence = 'persistent' | 'transient' | 'both'
+
+export interface VnfDetectionsResponse {
+  filters: {
+    persistence: VnfPersistence
+    processing_states: string[]
+  }
+  total: number
+  limit: number
+  offset: number
+  counts: {
+    persistent_objects: number
+    transient_detections: number
+    returned_objects: number
+    returned_detections: number
+  }
+  positioning?: {
+    latitude_longitude: string
+    raw_latitude_raw_longitude: string
+  }
+  objects: ThermalObject[]
+  detections: VnfMapDetection[]
+}
+
+export interface DashboardMapResponse {
+  selected_date: string | null
+  filters?: {
+    object_scope: MapObjectScope
+    firms_limit: number
+    object_limit: number
+    vnf_limit: number
+  }
+  counts: {
+    firms: number
+    matched_firms: number
+    unmatched_firms: number
+    objects: number
+    vnf_detections: number
+  }
+  positioning?: {
+    objects: string
+    firms: string
+    vnf_detections: string
+  }
+  objects: ThermalObject[]
+  firms: RecentFirmsDetection[]
+  vnf_detections: VnfMapDetection[]
+}
 export interface DashboardAlert { id: number; alert_type: string; firms_uid: string | null; object_uid: string | null; latitude: number | null; longitude: number | null; severity: string | null; message: string | null; created_at: string | null }
 export interface AlertsResponse { count: number; alerts: DashboardAlert[] }
 

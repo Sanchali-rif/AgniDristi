@@ -30,7 +30,7 @@ export function ActivityTimelineChart({ sourceId }: { sourceId: string }) {
               <XAxis dataKey="month" tick={{ fontSize: 10, fill: 'currentColor' }} tickLine={false} />
               <YAxis yAxisId="detections" tick={{ fontSize: 10, fill: 'currentColor' }} tickLine={false} />
               <YAxis yAxisId="temperature" orientation="right" tick={{ fontSize: 10, fill: 'currentColor' }} tickLine={false} />
-              <Tooltip contentStyle={{ backgroundColor: '#18181b', color: '#fff', border: '1px solid #3f3f46', fontSize: '11px', borderRadius: '0px' }} />
+              <Tooltip cursor={{ fill: 'rgba(255, 255, 255, 0.08)' }} contentStyle={{ backgroundColor: '#18181b', color: '#fff', border: '1px solid #3f3f46', fontSize: '11px', borderRadius: '0px' }} />
               <Legend wrapperStyle={{ fontSize: 10, fontWeight: 700 }} />
               <Bar yAxisId="detections" dataKey="detections" name="Detections" fill="#22c55e" radius={[2, 2, 0, 0]} />
               <Line yAxisId="temperature" type="monotone" dataKey="avgTempK" name="Avg temp (K)" stroke="#3b82f6" strokeWidth={2.5} dot={{ r: 3, fill: '#3b82f6' }} />
